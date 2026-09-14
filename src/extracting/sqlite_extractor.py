@@ -45,7 +45,10 @@ class DBSchema:
     @classmethod
     def from_cli_params(cls, table_list: list[str], timestamps: dict[str, int]) -> Self:
         tables = (t.split(":") for t in table_list)
-        tables = [TableInfo(t[0], timestamps[t[0]], *(t[1].split(","))) for i, t in enumerate(tables)]
+        tables = [
+            TableInfo(t[0], timestamps.get(t[0], 0), *(t[1].split(",")))
+            for i, t in enumerate(tables)
+        ]
 
         return cls(tables)
 
@@ -55,17 +58,18 @@ class SQLiteExtractor:
         self.con = sqlite3.connect(connection_string)
         self.schema = schema
 
-    def extract_tables(self) -> Generator[tuple[str, Table]]:
+    def extract_tables(self) -> Generator[tuple[sqlite3.Cursor, str, list[str]]]:
         cursor = self.con.cursor()
 
-        query = """
-        SELECT ? FROM ? WHERE ? > ?;
-        """
-
-        for table in self.schema:
+        for table in self.schema.tables:
             columns = ", ".join(table.columns)
-            result = cursor.execute(
-                query, (columns, table.name, table.timestamp_column, table.timestamp)
-            )
 
-            yield result
+            query = f"""
+            SELECT {columns}
+            FROM {table.name}
+            WHERE {table.timestamp_column} > :timestamp;
+            """
+
+            result = cursor.execute(query, {"timestamp": table.timestamp})
+
+            yield result, table.name, table.columns

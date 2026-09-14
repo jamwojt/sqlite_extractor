@@ -1,4 +1,8 @@
+from pathlib import Path
+
 import boto3
+
+from connecting.errors import DownloadFailed, ObjectNotFound
 
 
 class S3Connection:
@@ -12,13 +16,15 @@ class S3Connection:
             aws_secret_access_key=s3_secret_key,
         )
 
-    def download_file(self, bucket: str, s3_path: str, save_path: str) -> None:
-        response = self.client.get_object(Bucket=bucket, Key=s3_path)
-        status = response.get("HTTPStatusCode")
-        print(type(status))
+    def download_file(self, bucket: str, s3_path: Path, save_path: Path) -> None:
+        try:
+            response = self.client.get_object(Bucket=bucket, Key=str(s3_path))
+        except self.client.exceptions.NoSuchKey:
+            raise ObjectNotFound
+        status = response.get("ResponseMetadata").get("HTTPStatusCode")
         print(response)
-        # if status is None or status != 200:
-        #     raise DownloadFailed
+        if status is None or status != 200:
+            raise DownloadFailed
 
         contents = response["Body"].read()
 
