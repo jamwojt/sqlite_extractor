@@ -22,7 +22,6 @@ class S3Connection:
         except self.client.exceptions.NoSuchKey:
             raise ObjectNotFound
         status = response.get("ResponseMetadata").get("HTTPStatusCode")
-        print(response)
         if status is None or status != 200:
             raise DownloadFailed
 
@@ -31,6 +30,12 @@ class S3Connection:
         with open(save_path, "wb") as f:
             f.write(contents)
 
-    def write_file(self, bucket: str, s3_path: str, file_path: str) -> None:
+    def write_file(self, bucket: str, s3_path: str, file_path: Path) -> None:
         with open(file_path, "rb") as f:
             self.client.put_object(Bucket=bucket, Key=s3_path, Body=f.read())
+
+    def write_dir(self, bucket: str, dir_path: Path) -> None:
+        for file in dir_path.rglob("extracted/**/*.parquet"):
+            file_path = str(file.parent) + "/" + file.name
+            with open(file, "rb") as f:
+                self.client.put_object(Bucket=bucket, Key=file_path, Body=f.read())

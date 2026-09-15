@@ -1,0 +1,9 @@
+.venv
+Dockerfile
+.env
+extracted
+.git
+.gitignore
+README.md
+tables.txt
+
