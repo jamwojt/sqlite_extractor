@@ -2,8 +2,6 @@ import json
 import os
 from pathlib import Path
 
-from dotenv import load_dotenv
-
 from cli_parsing import parse_args
 from connecting import S3Connection
 from connecting.errors import DownloadFailed, ObjectNotFound
@@ -19,7 +17,6 @@ EXTRACTED_DIR_PATH = Path("")
 
 
 def main() -> None:
-    load_dotenv()
     Logger.debug("Getting env variables")
     s3_endpoint = os.getenv("S3_ENDPOINT")
     if s3_endpoint is None:
@@ -84,7 +81,9 @@ def main() -> None:
             Logger.info("Uploading object")
             with open(METADATA_SAVE_PATH, "wb") as f:
                 f.write(args.checkpoint.encode("utf-8"))
-            s3_connection.write_file(args.bucket, str(METADETA_S3_PATH), METADATA_SAVE_PATH)
+            s3_connection.write_file(
+                args.bucket, str(METADETA_S3_PATH), METADATA_SAVE_PATH
+            )
 
 
 if __name__ == "__main__":
