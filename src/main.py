@@ -1,19 +1,20 @@
+import datetime
 import json
 import os
 from pathlib import Path
 
 from cli_parsing import parse_args
 from connecting import S3Connection
-from connecting.errors import DownloadFailed, ObjectNotFound
+from connecting.errors import ObjectNotFound
 from errors import MissingEnvVariable
 from extracting import DataSaver, DBSchema, SQLiteExtractor
 from logger import Logger
 
 
-METADETA_S3_PATH = Path("metadata/table_checkpoints.json")
-DB_SAVE_PATH = Path("./saved.db")
+METADETA_S3_PATH = Path("metadata/watch_table_checkpoints.json")
 METADATA_SAVE_PATH = Path("./checkpoints.json")
-EXTRACTED_DIR_PATH = Path("")
+DB_SAVE_PATH = Path("./saved.db")
+EXTRACTED_DIR_PATH = Path("extracted_watch_tables")
 
 
 def main() -> None:
@@ -35,55 +36,51 @@ def main() -> None:
 
     Logger.debug("Parsing CLI args")
     args = parse_args()
-    match args.mode:
-        case "extract":
-            Logger.info("Starting extraction")
-            s3_connection.download_file(args.bucket, args.object_path, DB_SAVE_PATH)
-            try:
-                s3_connection.download_file(
-                    args.bucket, METADETA_S3_PATH, METADATA_SAVE_PATH
-                )
 
-                with open(METADATA_SAVE_PATH, "rb") as f:
-                    text_object = f.read().decode("utf-8")
-                timestamps = json.loads(text_object)
-                Logger.info("Loaded timestamps")
-            except ObjectNotFound:
-                Logger.warning("Timestamp object not found, timestamp cutoff will be 0")
-                timestamps = {}
-            except Exception as e:
-                Logger.error(f"Error while trying to download timestamps: {e}")
-                raise
+    Logger.info("Starting extraction")
+    s3_connection.download_file(args.bucket, args.object_path, DB_SAVE_PATH)
+    try:
+        s3_connection.download_file(args.bucket, METADETA_S3_PATH, METADATA_SAVE_PATH)
 
-            Logger.debug("Parsing schema from params")
-            db_schema = DBSchema.from_cli_params(args.table, timestamps)
+        with open(METADATA_SAVE_PATH, "rb") as f:
+            text_object = f.read().decode("utf-8")
+        timestamps = json.loads(text_object)
+        Logger.info("Loaded timestamps")
+    except ObjectNotFound:
+        Logger.warning("Timestamp object not found, timestamp cutoff will be 0")
+        timestamps = {}
+    except Exception as e:
+        Logger.error(f"Error while trying to download timestamps: {e}")
+        raise
 
-            extractor = SQLiteExtractor(DB_SAVE_PATH, db_schema)
-            saver = DataSaver(EXTRACTED_DIR_PATH)
+    Logger.debug("Parsing schema from params")
+    db_schema = DBSchema.from_cli_params(args.table, timestamps)
 
-            Logger.info("Parsing tables")
-            for table_cursor, table_name, table_columns in extractor.extract_tables():
-                data = table_cursor.fetchall()
+    extractor = SQLiteExtractor(DB_SAVE_PATH, db_schema)
+    saver = DataSaver(EXTRACTED_DIR_PATH)
 
-                saver.save_sqlite_result(data, table_columns, table_name)
+    Logger.info("Parsing tables")
+    checkpoints = {}
+    cest_tz = datetime.timezone(datetime.timedelta(hours=2))
+    file_name = datetime.datetime.now(tz=cest_tz).strftime("%Y-%m-%dT%H:%M")
+    for table_cursor, table_name, table_columns in extractor.extract_tables():
+        data = table_cursor.fetchall()
 
-            Logger.info("Writing parsed tables to S3")
-            s3_connection.write_dir(args.bucket, EXTRACTED_DIR_PATH)
-            Logger.info("Done")
-        case "update":
-            Logger.info("Starting update")
-            try:
-                Logger.info("Parsing the passed object")
-                json.loads(args.checkpoint)
-            except json.JSONDecodeError:
-                Logger.info("Invalid JSON object")
-                return
-            Logger.info("Uploading object")
-            with open(METADATA_SAVE_PATH, "wb") as f:
-                f.write(args.checkpoint.encode("utf-8"))
-            s3_connection.write_file(
-                args.bucket, str(METADETA_S3_PATH), METADATA_SAVE_PATH
-            )
+        timestamp = saver.save_sqlite_result(data, table_columns, table_name, file_name)
+        checkpoints[table_name] = timestamp
+
+    Logger.info("Writing parsed tables to S3")
+    s3_connection.write_dir(args.bucket, EXTRACTED_DIR_PATH)
+
+    Logger.info("Uploading checkpoints")
+    with open(METADATA_SAVE_PATH, "wb") as f:
+        f.write(json.dumps(checkpoints).encode("utf-8"))
+    try:
+        s3_connection.write_file(args.bucket, str(METADETA_S3_PATH), METADATA_SAVE_PATH)
+    except Exception as e:
+        Logger.error(f"Error while writing checkpoints to S3: {e}")
+        raise
+    Logger.info("Done")
 
 
 if __name__ == "__main__":

@@ -35,7 +35,7 @@ class S3Connection:
             self.client.put_object(Bucket=bucket, Key=s3_path, Body=f.read())
 
     def write_dir(self, bucket: str, dir_path: Path) -> None:
-        for file in dir_path.rglob("extracted/**/*.parquet"):
+        for file in dir_path.rglob("./**/*.parquet"):
             file_path = str(file.parent) + "/" + file.name
             with open(file, "rb") as f:
                 self.client.put_object(Bucket=bucket, Key=file_path, Body=f.read())

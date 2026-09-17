@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pyarrow
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 
@@ -26,15 +27,16 @@ class DataSaver:
         return table
 
     def save_sqlite_result(
-        self, data: list[tuple], columns: list[str], table_name: str
+        self, data: list[tuple], columns: list[str], table_name: str, file_name: str
     ) -> None:
         column_based_data = DataSaver._to_column_based(data)
+        timestamp = int(pc.max(column_based_data[0]))
         table = DataSaver._create_pyarrow_table(column_based_data, columns)
 
-        save_path = self.save_root / Path(table_name) / Path("table.parquet")
+        save_path = self.save_root / Path(table_name) / Path(f"{file_name}.parquet")
         save_path.parent.mkdir(exist_ok=True, parents=True)
         save_path.touch(exist_ok=True)
 
-        pq.write_table(
-            table, save_path
-        )
+        pq.write_table(table, save_path)
+
+        return timestamp
