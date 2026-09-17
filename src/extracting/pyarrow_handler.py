@@ -13,6 +13,9 @@ class DataSaver:
 
     @staticmethod
     def _to_column_based(data: list[tuple]) -> list[list]:
+        if len(data) == 0:
+            return []
+
         column_based_data = []
         for i in range(len(data[0])):
             column_data = [x[i] for x in data]
@@ -28,8 +31,10 @@ class DataSaver:
 
     def save_sqlite_result(
         self, data: list[tuple], columns: list[str], table_name: str, file_name: str
-    ) -> None:
+    ) -> int:
         column_based_data = DataSaver._to_column_based(data)
+        if len(column_based_data) == 0:
+            return -1
         timestamp = int(pc.max(column_based_data[0]))
         table = DataSaver._create_pyarrow_table(column_based_data, columns)
 

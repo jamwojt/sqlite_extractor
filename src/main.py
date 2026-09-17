@@ -60,21 +60,22 @@ def main() -> None:
     saver = DataSaver(EXTRACTED_DIR_PATH)
 
     Logger.info("Parsing tables")
-    checkpoints = {}
     cest_tz = datetime.timezone(datetime.timedelta(hours=2))
     file_name = datetime.datetime.now(tz=cest_tz).strftime("%Y-%m-%dT%H:%M")
     for table_cursor, table_name, table_columns in extractor.extract_tables():
         data = table_cursor.fetchall()
 
         timestamp = saver.save_sqlite_result(data, table_columns, table_name, file_name)
-        checkpoints[table_name] = timestamp
+        if timestamp == -1:
+            continue
+        timestamps[table_name] = timestamp
 
     Logger.info("Writing parsed tables to S3")
     s3_connection.write_dir(args.bucket, EXTRACTED_DIR_PATH)
 
     Logger.info("Uploading checkpoints")
     with open(METADATA_SAVE_PATH, "wb") as f:
-        f.write(json.dumps(checkpoints).encode("utf-8"))
+        f.write(json.dumps(timestamps).encode("utf-8"))
     try:
         s3_connection.write_file(args.bucket, str(METADETA_S3_PATH), METADATA_SAVE_PATH)
     except Exception as e:
